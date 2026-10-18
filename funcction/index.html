@@ -371,8 +371,8 @@ function renderLabel(){
   const q=curKey(s),r=s.res[q];
   {const uk=LQKEY()+'#'+q+'#'+s.pos;if(uk!==unsureQ){unsure=false;unsureQ=uk}}
   const st0=stat(figKey),gi=lsub==='find'?f.masks.findIndex(m=>m.a===q):q,tag=st0.g&&st0.g[gi]?'<span class="gtag" title="之前標了沒把握">猜</span>':'';
-  const ub=r===undefined&&!s.done?`<div class="row" style="margin-top:4px"><button class="tg" id="unsure" aria-pressed="${unsure}">沒把握</button></div>`:'';
-  const gn=s.guess&&s.guess[q]?' 你標了沒把握，這題已放進錯題本。':'';
+  const ub=r===undefined&&!s.done?`<div class="row" style="margin-top:4px"><button class="tg" id="unsure" aria-pressed="${unsure}">沒把握</button></div>`:r===true?`<div class="row" style="margin-top:4px"><button class="tg" id="guessed" aria-pressed="${!!(s.guess&&s.guess[q])}">猜對的</button></div>`:'';
+  const gn=s.guess&&s.guess[q]?' 已標為猜對，這題已放進錯題本。':'';
   $('#stage').innerHTML=`<div class="stage"><div class="plate" id="plate"></div></div>`;
   if(lsub==='find'){const solved=new Set(s.order.filter(n=>s.res[n]===true));
     $('#plate').innerHTML=plateHTML(f,{mode:'find',solved,wrong:r===false?s.pick[q]:-1,reveal:r!==undefined?q:null,locked:r!==undefined})}
@@ -398,7 +398,7 @@ function renderLabel(){
   <details class="stats" ${NARROW()?'':'open'}><summary>已作答 ${done} / ${N}，答對 ${ok}，答錯 ${bad}</summary>
    <div class="bar"><i style="width:${ok/N*100}%;background:var(--ok)"></i><i style="width:${bad/N*100}%;background:var(--bad)"></i></div>
    <div class="row"><button class="btn ghost" id="retry" ${bad?'':'disabled'}>只練這輪錯題（${bad}）</button><button class="btn ghost" id="book" ${weakList().length?'':'disabled'}>錯題本（${weakList().length}）</button><button class="btn ghost" id="restart">重新出題</button></div>
-   ${cumul()}<p class="hint">常錯的標籤會比較早出現。${lsub!=='find'?'可點圖上編號跳題。':''}<span class="kbdhint">${lsub==='choice'?'鍵盤 1–5 作答，':''}G 切換沒把握，Enter 下一題。</span>沒把握又答對的題目算答對，但會放進錯題本並標「猜」，之後沒標沒把握再答對一次就會移出。</p></details>`;
+   ${cumul()}<p class="hint">常錯的標籤會比較早出現。${lsub!=='find'?'可點圖上編號跳題。':''}<span class="kbdhint">${lsub==='choice'?'鍵盤 1–5 作答，':''}G 切換沒把握／猜對的，Enter 下一題。</span>沒把握又答對的題目算答對，但會放進錯題本並標「猜」；答對後也可以補按「猜對的」，再按一次取消。之後沒標再答對一次就會移出。</p></details>`;
   $('#panel').innerHTML=o;
   if(lsub==='type'&&r===undefined&&!s.done&&!TOUCH){const inp=$('#typein');inp&&inp.focus({preventScroll:true})}
   requestAnimationFrame(focusCur);
@@ -559,6 +559,7 @@ document.addEventListener('click',e=>{
   if(tab==='label'){const s=getLQ();
     if(t.classList.contains('mask')){const i=+d.i;if(lsub==='find'){if(s.res[curKey(s)]===undefined&&!s.done)answerLabel(i)}else{const p=s.order.indexOf(i);if(p>=0){s.pos=p;s.done=false;render()}}return}
     if(t.classList.contains('opt'))return answerLabel(d.x);
+    if(t.id==='guessed'){const s=getLQ(),q=curKey(s),f=DATA.figs[figKey],gi=lsub==='find'?f.masks.findIndex(m=>m.a===q):q,st=stat(figKey),c=st.c[gi];if(!c||s.res[q]!==true)return;st.g=st.g||{};s.guess=s.guess||{};if(s.guess[q]){delete s.guess[q];delete st.g[gi];c[2]=Math.max(0,(c[2]||0)-1)}else{s.guess[q]=1;st.g[gi]=1;c[2]=(c[2]||0)+1}return render()}
     if(t.id==='unsure'){unsure=!unsure;t.setAttribute('aria-pressed',unsure);return}
     if(t.id==='next')return nextLabel();
     if(t.id==='prev'){s.pos=Math.max(0,s.pos-1);return render()}
@@ -584,7 +585,7 @@ document.addEventListener('keydown',e=>{if(e.target.closest('input,textarea'))re
   const opts=[...document.querySelectorAll('.opt')];
   if(/^[1-5]$/.test(e.key)&&opts[e.key-1]&&!opts[e.key-1].disabled){opts[e.key-1].click()}
   else if(e.key==='Enter'&&tab==='label'&&document.activeElement===document.body){nextLabel()}
-  else if((e.key==='g'||e.key==='G')&&tab==='label'&&!e.metaKey&&!e.ctrlKey){const b=document.getElementById('unsure');if(b)b.click()}});
+  else if((e.key==='g'||e.key==='G')&&tab==='label'&&!e.metaKey&&!e.ctrlKey){const b=document.getElementById('unsure')||document.getElementById('guessed');if(b)b.click()}});
 new ResizeObserver(()=>{if(tab==='oi')drawLinks()}).observe(document.body);
 new ResizeObserver(sheetPad).observe(document.getElementById('sheet'));
 ['(max-width:979px)','(max-width:700px)'].forEach(q=>matchMedia(q).addEventListener('change',()=>render()));
