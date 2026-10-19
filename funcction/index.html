@@ -56,7 +56,7 @@ h1{font-family:var(--serif);font-weight:700;font-size:clamp(24px,3.2vw,34px);lin
 .mask .n{flex:none;display:grid;place-items:center;min-width:1.7em;height:1.7em;margin-left:.25em;border-radius:50%;background:#B3121B;color:#fff;font-weight:700;font-size:.92em}
 .mask .t{padding:0 .35em;font-family:var(--serif);font-weight:600;white-space:normal}
 .mask.cur{box-shadow:0 0 0 3px #F2B705,0 0 0 6px rgba(242,183,5,.35);z-index:3}
-.mask.ok{background:#E3F2E8;border-color:#2E7A4C}.mask.ok .n{background:#2E7A4C}
+.mask.ok{background:#E3F2E8;border-color:#2E7A4C}.mask.ref{background:#F4F1EA;border-color:#9C968A;border-style:dashed}.mask.ref .t{color:#4A4741}.mask.ok .n{background:#2E7A4C}
 .mask.bad{background:#FBE5E6;border-color:#B3121B}
 .mask{width:var(--w);height:var(--h)}
 .mask.ok,.mask.bad{width:var(--w);height:var(--h);min-width:0;overflow:hidden}
@@ -299,7 +299,7 @@ function persist(){STORE.ui={tab,fig:figKey,lsub,oi:oiKey,omode,zoom};
   const el=$('#saved');if(el)el.textContent=canStore?'作答紀錄會自動存在這個瀏覽器':'這個瀏覽器無法儲存，重新整理後紀錄會消失'}
 function stat(k){const f=DATA.figs[k];if(!STORE.stats[k]||STORE.stats[k].sig!==sig(f))STORE.stats[k]={sig:sig(f),c:{}};return STORE.stats[k]}
 function record(k,i,ok,g){const st=stat(k),c=st.c[i]||[0,0];c[0]++;if(!ok)c[1]++;st.g=st.g||{};if(ok&&g){c[2]=(c[2]||0)+1;st.g[i]=1}else if(ok)delete st.g[i];st.c[i]=c}
-let unsure=false,unsureQ=null,quitAsk=false;
+let unsure=false,unsureQ=null,quitAsk=false,showAll=null;
 function errRate(k,i){const c=stat(k).c[i];return c?c[1]/c[0]:null}
 function weighted(items,wf){return items.map(x=>[x,Math.pow(Math.random(),1/wf(x))]).sort((a,b)=>b[1]-a[1]).map(x=>x[0])}
 const wOf=(k,i)=>{const c=stat(k).c[i];if(!c)return 1.5;return 1+4*Math.min(1,(c[1]+(c[2]||0))/c[0])};
@@ -328,7 +328,7 @@ function initLQ(only){
   else order=weighted(only||f.masks.map((_,i)=>i),i=>wOf(figKey,i));
   const s={sig:sig(f),order,pos:0,res:{},opts:{},pick:{}};
   if(lsub==='choice')order.forEach(i=>s.opts[i]=buildOptions(f,f.masks[i].a));
-  STORE.lq[LQKEY()]=s;unsure=false;unsureQ=null;
+  STORE.lq[LQKEY()]=s;unsure=false;unsureQ=null;showAll=null;
 }
 function curKey(s){return s.order[s.pos]}
 function answerLabel(val){
@@ -361,9 +361,10 @@ function plateHTML(f,opt){ // opt: {mode:'num'|'find'|'exam', cur, res, pick, ta
   f.masks.forEach((m,i)=>{
     let cls='mask',inner='',lab='',dis='';
     if(opt.mode==='num'){const r=opt.res[i];cls+=(i===opt.cur?' cur':'')+(r===true?' ok':r===false?' bad':'');
-      inner=`<span class="n">${i+1}</span>`+(r!==undefined?`<span class="t">${esc(m.a)}</span>`:'');lab=`第 ${i+1} 號`}
+      const rf=opt.all&&r===undefined;if(rf)cls+=' ref';
+      inner=`<span class="n">${i+1}</span>`+(r!==undefined||rf?`<span class="t">${esc(m.a)}</span>`:'');lab=`第 ${i+1} 號`}
     else if(opt.mode==='find'){const done=opt.solved.has(m.a),wrongPick=opt.wrong===i,showAns=opt.reveal===m.a;
-      cls+=(done||showAns?' ok':'')+(wrongPick?' bad':'');inner=(done||showAns||wrongPick)?`<span class="t">${esc(m.a)}</span>`:'';lab='遮住的標籤';if(opt.locked)dis='tabindex="-1"'}
+      const rf=opt.all&&!done&&!showAns&&!wrongPick;cls+=(done||showAns?' ok':'')+(wrongPick?' bad':'')+(rf?' ref':'');inner=(done||showAns||wrongPick||rf)?`<span class="t">${esc(m.a)}</span>`:'';lab='遮住的標籤';if(opt.locked)dis='tabindex="-1"'}
     else{cls+=i===opt.target?' cur':'';inner=i===opt.target?'<span class="n">?</span>':'';lab=i===opt.target?'題目標籤':'';dis='tabindex="-1"';cls+=' static'}
     h+=`<button class="${cls}" data-i="${i}" ${dis} aria-label="${lab}" style="left:${m.r[0]}%;top:${m.r[1]}%;--w:${m.r[2]}%;--h:${m.r[3]}%">${inner}</button>`;
   });
@@ -377,13 +378,15 @@ function renderLabel(){
   const ub=r===undefined&&!s.done?`<div class="row" style="margin-top:4px"><button class="tg" id="unsure" aria-pressed="${unsure}">沒把握</button></div>`:r===true?`<div class="row" style="margin-top:4px"><button class="tg" id="guessed" aria-pressed="${!!(s.guess&&s.guess[q])}">猜對的</button></div>`:'';
   const gn=s.guess&&s.guess[q]?' 已標為猜對，這題已放進錯題本。':'';
   $('#stage').innerHTML=`<div class="stage"><div class="plate" id="plate"></div></div>`;
-  if(lsub==='find'){const solved=new Set(s.order.filter(n=>s.res[n]===true));
-    $('#plate').innerHTML=plateHTML(f,{mode:'find',solved,wrong:r===false?s.pick[q]:-1,reveal:r!==undefined?q:null,locked:r!==undefined})}
-  else $('#plate').innerHTML=plateHTML(f,{mode:'num',cur:s.done?-1:q,res:s.res});
+  const all=!!s.done&&showAll===LQKEY(),solved=lsub==='find'?new Set(s.order.filter(n=>s.res[n]===true)):null;
+  const hid=!s.done?0:lsub==='find'?f.masks.filter((m,i)=>!solved.has(m.a)&&!(r!==undefined&&m.a===q)&&!(r===false&&s.pick[q]===i)).length:f.masks.filter((_,i)=>s.res[i]===undefined).length;
+  if(lsub==='find'){
+    $('#plate').innerHTML=plateHTML(f,{mode:'find',solved,wrong:r===false?s.pick[q]:-1,reveal:r!==undefined?q:null,locked:r!==undefined,all})}
+  else $('#plate').innerHTML=plateHTML(f,{mode:'num',cur:s.done?-1:q,res:s.res,all});
   applyZoom();
   const done=s.order.filter(k=>s.res[k]!==undefined).length,ok=s.order.filter(k=>s.res[k]===true).length,bad=done-ok,N=s.order.length;
   let o=`<div class="subtabs" role="tablist">${Object.entries(LSUB).map(([k,v])=>`<button role="tab" data-lsub="${k}" aria-selected="${k===lsub}">${v}</button>`).join('')}</div>`;
-  if(s.done){o+=`<p class="qno"><b>${Math.round(ok/N*100)}</b><span>分</span></p><p class="prompt">${N} 題答對 ${ok} 題。圖上已顯示所有正確名稱。</p>`}
+  if(s.done){o+=`<p class="qno"><b>${Math.round(ok/N*100)}</b><span>分</span></p><p class="prompt">${N} 題答對 ${ok} 題。${hid?'圖上顯示這輪考過的名稱。':'圖上已顯示所有正確名稱。'}</p>${hid?`<div class="row" style="margin-top:4px"><button class="btn ghost" id="showall" aria-pressed="${all}">${all?'隱藏其他名稱':`顯示所有名稱（還有 ${hid} 個）`}</button></div>`:''}`}
   else if(lsub==='choice'){
     o+=`<p class="qno"><b>${q+1}</b><span>號標籤　第 ${s.pos+1} / ${N} 題${tag}</span></p><p class="prompt">圖中 <strong>${q+1}</strong> 號遮住的名稱是？</p>${ub}<ul class="opts">`;
     s.opts[q].forEach((x,n)=>{let c='';if(r!==undefined){if(x===f.masks[q].a)c='ok';else if(x===s.pick[q])c='bad'}
@@ -566,6 +569,7 @@ document.addEventListener('click',e=>{
     if(t.classList.contains('opt'))return answerLabel(d.x);
     if(t.id==='guessed'){const s=getLQ(),q=curKey(s),f=DATA.figs[figKey],gi=lsub==='find'?f.masks.findIndex(m=>m.a===q):q,st=stat(figKey),c=st.c[gi];if(!c||s.res[q]!==true)return;st.g=st.g||{};s.guess=s.guess||{};if(s.guess[q]){delete s.guess[q];delete st.g[gi];c[2]=Math.max(0,(c[2]||0)-1)}else{s.guess[q]=1;st.g[gi]=1;c[2]=(c[2]||0)+1}return render()}
     if(t.id==='unsure'){unsure=!unsure;t.setAttribute('aria-pressed',unsure);return}
+    if(t.id==='showall'){showAll=showAll===LQKEY()?null:LQKEY();return render()}
     if(t.id==='next')return nextLabel();
     if(t.id==='prev'){s.pos=Math.max(0,s.pos-1);return render()}
     if(t.id==='restart'){initLQ();return render()}
