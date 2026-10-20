@@ -306,11 +306,22 @@ const wOf=(k,i)=>{const c=stat(k).c[i];if(!c)return 1.5;return 1+4*Math.min(1,(c
 
 /* ---------- typing helpers ---------- */
 const norm=s=>s.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-function variants(a){const v=new Set([norm(a)]);const m=a.match(/^(.*?)(\S+)\s*\(([^)]+)\)(.*)$/);
-  if(m){v.add(norm(m[1]+m[2]+m[4]));v.add(norm(m[1]+m[3]+m[4]))}return[...v]}
+const SYN={peroneus:'fibularis',peroneal:'fibular',annular:'anular',fascia:'fasciae'};
+const IRR={phalanges:'phalanx',foramina:'foramen',rotatores:'rotator',teeth:'tooth'};
+const canW=w=>{w=SYN[w]||w;if(IRR[w])return IRR[w];if(w.length>3){if(/sses$/.test(w))return w.slice(0,-2);if(/ies$/.test(w))return w.slice(0,-3)+'y';if(/s$/.test(w)&&!/(us|is|ss)$/.test(w))return w.slice(0,-1)}return w};
+const canon=x=>norm(x).split(' ').filter(w=>w&&w!=='the').map(canW).join(' ');
+const ALIAS={'Extensor digitorum':['Extensor digitorum communis'],'Extensor indicis':['Extensor indicis proprius'],'Iliotibial tract':['ITB','IT band','Iliotibial band'],'Fibular collateral ligament':['LCL','Lateral collateral ligament'],'Tibial collateral ligament':['MCL','Medial collateral ligament'],'Anterior talofibular ligament':['ATFL'],'Posterior talofibular ligament':['PTFL'],'Calcaneofibular ligament':['CFL'],'Patellar ligament':['Patellar tendon'],'Intertubercular sulcus (groove)':['Bicipital groove','Bicipital sulcus'],'Medial (deltoid) ligament of the ankle joint':['Deltoid ligament','Medial ligament of ankle','Deltoid ligament of ankle']};
+const OFSUF=/^(.+?) of (?:the )?(scapula|tibia|humerus|radius|ulna|femur|fibula|mandible|maxilla|ethmoid bone|pubis|ischium|acetabulum|knee)$/i,GENW=['head','base','shaft','body','neck','tuberosity','ramus','ligament'];
+function variants(a,f){const raw=new Set([a]);
+  const m=a.match(/^(.*?)(\S+)\s*\(([^)]+)\)(.*)$/);
+  if(m){raw.add(m[1]+m[2]+m[4]);raw.add(m[1]+m[3]+m[4]);if(/^[A-Z]{2,5}$/.test(m[3]))raw.add(m[3]);if(/^of /i.test(m[3]))raw.add(m[1]+m[2]+' '+m[3]+m[4])}
+  (ALIAS[a]||[]).forEach(x=>raw.add(x));
+  const others=f?new Set(f.masks.filter(x=>x.a!==a).flatMap(x=>{const r=[canon(x.a)];const o=x.a.match(OFSUF);if(o)r.push(canon(o[1].trim()));return r})):new Set();
+  [...raw].forEach(x=>{const o=x.match(OFSUF);if(o){const r=o[1].trim();if(r.includes(' of ')||(!r.includes(' ')&&GENW.includes(r.toLowerCase())))return;if(!others.has(canon(r)))raw.add(r)}});
+  return[...new Set([...raw].map(canon))]}
 function lev(a,b){const d=Array.from({length:a.length+1},(_,i)=>[i]);for(let j=1;j<=b.length;j++)d[0][j]=j;
   for(let i=1;i<=a.length;i++)for(let j=1;j<=b.length;j++)d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));return d[a.length][b.length]}
-function judgeType(input,ans){const n=norm(input),vs=variants(ans);if(vs.includes(n))return'ok';return vs.some(v=>lev(n,v)<=2)?'close':'bad'}
+function judgeType(input,ans,f){const n=canon(input),vs=variants(ans,f);if(vs.includes(n))return'ok';return vs.some(v=>lev(n,v)<=2)?'close':'bad'}
 
 /* ---------- label quiz ---------- */
 const LQKEY=()=>figKey+'|'+lsub;
@@ -334,7 +345,7 @@ function curKey(s){return s.order[s.pos]}
 function answerLabel(val){
   const f=DATA.figs[figKey],s=getLQ(),q=curKey(s);if(s.res[q]!==undefined)return;
   if(lsub==='choice'){s.pick[q]=val;s.res[q]=val===f.masks[q].a;record(figKey,q,s.res[q],unsure)}
-  else if(lsub==='type'){const j=judgeType(val,f.masks[q].a);s.pick[q]=val;s.res[q]=j==='ok';s.close=s.close||{};if(j==='close')s.close[q]=1;record(figKey,q,s.res[q],unsure)}
+  else if(lsub==='type'){const j=judgeType(val,f.masks[q].a,f);s.pick[q]=val;s.res[q]=j==='ok';s.close=s.close||{};if(j==='close')s.close[q]=1;record(figKey,q,s.res[q],unsure)}
   else{const i=+val;s.pick[q]=i;s.res[q]=f.masks[i].a===q;record(figKey,f.masks.findIndex(m=>m.a===q),s.res[q],unsure)}
   if(unsure){s.guess=s.guess||{};s.guess[q]=1}
   unsure=false;unsureQ=null;
@@ -527,7 +538,7 @@ function qText(q){if(q.type==='m'){const s=DATA.oi.find(x=>x.id===q.s),m=s.muscl
   return `${DATA.figs[q.fig].title}　${q.type==='lc'?'選擇':'拼字'}`}
 function qAns(q){return q.type==='m'?q.ans:DATA.figs[q.fig].masks[q.i].a}
 function submitExam(){const E=STORE.exam;E.qs.forEach((q,i)=>{const a=E.ans[i];
-    if(q.type==='m')E.res[i]=a===q.ans;else if(q.type==='lc')E.res[i]=a===DATA.figs[q.fig].masks[q.i].a;else E.res[i]=a!=null&&judgeType(a,DATA.figs[q.fig].masks[q.i].a)==='ok';
+    if(q.type==='m')E.res[i]=a===q.ans;else if(q.type==='lc')E.res[i]=a===DATA.figs[q.fig].masks[q.i].a;else E.res[i]=a!=null&&judgeType(a,DATA.figs[q.fig].masks[q.i].a,DATA.figs[q.fig])==='ok';
     if(q.type!=='m')record(q.fig,q.i,E.res[i])});E.done=true;E.end=Date.now();render()}
 
 /* ---------- shell ---------- */
